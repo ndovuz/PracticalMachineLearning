@@ -1,0 +1,165 @@
+---
+title: "Practical Machine Learning—Course Project"
+output:
+  md_document:
+    toc: yes
+    variant: markdown_github
+  html_document:
+    toc: yes
+  pdf_document:
+    highlight: tango
+    number_sections: yes
+    toc: no
+---
+
+#Summary
+The purpose of this study is to identify the parameters of a set of motions that can be used to identity a particular activity.
+
+The data was provided by [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har)
+
+#Initiate Libraries
+
+```{r , echo=TRUE , warning=FALSE,message=FALSE}
+#initialize library
+
+library(caret,quietly=TRUE,warn.conflicts=FALSE)
+require(caret,quietly=TRUE,warn.conflicts=FALSE)
+
+library(AppliedPredictiveModeling,quietly=TRUE,warn.conflicts=FALSE)
+require(AppliedPredictiveModeling,quietly=TRUE,warn.conflicts=FALSE)
+
+library(ElemStatLearn,quietly=TRUE,warn.conflicts=FALSE)
+require(ElemStatLearn,quietly=TRUE,warn.conflicts=FALSE)
+
+library(pgmm,quietly=TRUE,warn.conflicts=FALSE)
+require(pgmm,quietly=TRUE,warn.conflicts=FALSE)
+
+library(rpart,quietly=TRUE,warn.conflicts=FALSE)
+require(rpart,quietly=TRUE,warn.conflicts=FALSE)
+
+library(gbm,quietly=TRUE,warn.conflicts=FALSE)
+require(gbm,quietly=TRUE,warn.conflicts=FALSE)
+
+library(lubridate,quietly=TRUE,warn.conflicts=FALSE)
+require(lubridate,quietly=TRUE,warn.conflicts=FALSE)
+
+library(forecast,quietly=TRUE,warn.conflicts=FALSE)
+require(forecast,quietly=TRUE,warn.conflicts=FALSE)
+
+library(e1071,quietly=TRUE,warn.conflicts=FALSE)
+require(e1071,quietly=TRUE,warn.conflicts=FALSE)
+
+library(doBy,quietly=TRUE,warn.conflicts=FALSE)
+require(doBy,quietly=TRUE,warn.conflicts=FALSE)
+```
+
+# Data
+
+The data was sourced from the following locations
+
+* Training Data
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+* Test Data
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+
+It was uploaded into the project as follows: 
+```{r, cache=TRUE}
+training_data <- read.csv("pml-training.csv")
+test_data     <- read.csv("pml-testing.csv")
+```
+
+
+#Data Clean Up
+
+
+To facilitate a predictive model, the data in the training and testing data sets must be common.
+
+To ensure the above condition is met, fields that are not common in both the training set and the test set as DROPPED!!
+```{r}
+drops <- colnames(test_data[, ( colSums(is.na(test_data)) / nrow(test_data) ) > 0.8 ] )
+training_data2 <- training_data[, !(names(training_data) %in%  drops     )]
+
+training_data2 <- training_data2[, !( names(training_data2) ==   colnames(test_data[1]))  ]
+training_data2 <- training_data2[, !( names(training_data2) ==   colnames(test_data[3:6]))  ]
+
+```
+
+If fields are highly correlated in the data set, there is a redundancy in having both fields present. Additionally, this redundancy may have the adverse effect of overfitting our model.
+
+We remove correlated values (cor > 84% ), as follows
+```{r}
+num_fld <- sapply( training_data2 ,  is.numeric )
+training_data3 <- training_data2[ , -findCorrelation(   cor(training_data2[,num_fld])  , cutoff=.9  ) ]
+
+```
+
+
+# Data Partition 
+
+We partition the training set from approve to 75% training, and 25% testing.
+
+```{r}
+
+set.seed(1024)
+inTrain = createDataPartition(training_data3$classe , p = 3/4)[[1]]
+training = training_data3[ inTrain,]
+testing = training_data3[-inTrain,]
+```
+
+# Model Training and Selection
+
+We train our model using 
+
+* Random Forest
+* Recursive Partition
+
+```{r, cache=TRUE}
+
+set.seed(12345)
+# Recursive Partition Tress
+modelFitRP <- train( classe ~ ., method = "rpart", data = training )
+#Random Forest
+modelFitRF <- train( classe ~ ., method = "rf", data = training )
+
+```
+
+We then test our model based on the data we partitioned
+
+```{r , message=FALSE}
+
+predRP <- predict( modelFitRP , testing )
+predRF <- predict( modelFitRF , testing )
+```
+
+##Confusion Matrix for Recursive Partition
+```{r }
+confusionMatrix( testing$classe , predRP  )
+```
+
+The recursive partition performs poorly. This is based off the Sensisitivity Values and the confusion matrix.
+
+
+##Confusion Matrix for Random Forest
+```{r}
+confusionMatrix( testing$classe , predRF  )
+```
+
+The Random Forest perform comparatively better than Recursive Partition. This is based off the Sensisitivity Values and the confusion matrix.
+
+WE SELECT RANDOM FOREST AS OUR ALGORITHIM.
+
+#Predict Activitiy Using Test Data
+
+We run the Random Forest model against the data ...
+```{r , message=FALSE}
+predRF_test_data <- predict( modelFitRF , test_data )
+data.frame( test_data[,1:2], as.data.frame(predRF_test_data) )
+```
+
+
+
+
